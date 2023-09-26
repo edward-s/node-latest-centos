@@ -20,7 +20,7 @@ jobs:
       image: centos:7
     env:
       VERSION: ${{ github.event.inputs.version }}
-      PRE_RELEASE: true
+      PRE_RELEASE: false
 
     steps:
     - name: Checkout
