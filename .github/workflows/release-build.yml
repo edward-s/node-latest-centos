@@ -1,8 +1,11 @@
 name: Build releases
 
 on:
-  schedule:
-    - cron: 0 23 * * *
+  workflow_dispatch:
+    inputs:
+        version:
+          description: 'Node Version'
+          required: true
 
 jobs:
   build:
@@ -12,10 +15,12 @@ jobs:
       fail-fast: false
       matrix:
         tag:
-          - lts
           - current
     container:
       image: centos:7
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      PRE_RELEASE: true
 
     steps:
     - name: Checkout
@@ -27,33 +32,12 @@ jobs:
         yum install -y centos-release-scl-rh centos-release-scl
         yum install -y devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-make wget make python3 curl
 
-    - name: Check Node Version
-      run: |
-        # the original commit does not seem to be readable inside the container, so use github api.
-        TAGS=$(curl -sk https://api.github.com/repos/sbwml/node-latest-centos/tags | grep "name")
-        if [[ ${{ matrix.tag }} == "lts" ]]; then
-            LATEST_VERSION=$(curl -sk https://nodejs.org/en | sed -n 's/.*title="Download \(.*\) LTS".*/\1/p')
-            echo "PRE_RELEASE=false" >> "$GITHUB_ENV"
-        else
-            LATEST_VERSION=$(curl -sk https://nodejs.org/en | sed -n 's/.*title="Download \(.*\) Current".*/\1/p')
-            echo "PRE_RELEASE=true" >> "$GITHUB_ENV"
-        fi
-        if [[ "$TAGS" == *"$LATEST_VERSION"* ]]; then
-            echo -e " \n\e[1;32mnode-v$LATEST_VERSION is already the latest version.\e[0m\n"
-            exit 0
-        else
-            echo "VERSION=$LATEST_VERSION" >> "$GITHUB_ENV"
-            echo "next=true" >> "$GITHUB_ENV"
-        fi
-
     - name: Download Node source code
-      if: env.next == 'true'
       run: |
         wget https://nodejs.org/dist/v${{ env.VERSION }}/node-v${{ env.VERSION }}.tar.xz
         tar -Jxf node-v${{ env.VERSION }}.tar.xz
 
     - name: Build Node
-      if: env.next == 'true'
       run: |
         source /opt/rh/devtoolset-10/enable
         cd node-v${{ env.VERSION }}
@@ -62,7 +46,6 @@ jobs:
         strip ../node-v${{ env.VERSION }}-linux-x$(getconf LONG_BIT)/bin/node
 
     - name: Create Archive
-      if: env.next == 'true'
       run: |
         mkdir tar
         tar Jcvf tar/node-v${{ env.VERSION }}-linux-x$(getconf LONG_BIT).tar.xz node-v${{ env.VERSION }}-linux-x$(getconf LONG_BIT)
@@ -70,14 +53,12 @@ jobs:
         cd tar && sha256sum node-v* > sha256sum.txt
 
     - name: Upload Artifacts
-      if: env.next == 'true'
       uses: actions/upload-artifact@v3
       with:
         name: node-v${{ env.VERSION }}
         path: tar/*
 
     - name: Create release
-      if: env.next == 'true'
       uses: ncipollo/release-action@v1
       with:
         name: node-v${{ env.VERSION }}
